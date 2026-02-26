@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/credentials.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Projektdateien (lokal, nicht für Deployment nötig)
+create_projektskizze.py
+ATN_Dashboard_Projektentwurf.docx
+Veroeffentlichungen/

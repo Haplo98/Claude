@@ -1,0 +1,6 @@
+von,nach,label,laenge,durchmesser,abnahme_m3h,min_druck
+UeST,K1,G1,400,0.15,120,0.1
+UeST,K2,G2,300,0.10,80,0.1
+K1,K3,G3,350,0.10,60,0.1
+K2,K4,G4,450,0.08,100,0.1
+K3,K4,G5,200,0.08,0,0.1
