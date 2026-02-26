@@ -34,6 +34,9 @@ from csv_import import (
     detect_columns, missing_required, roles_for_domain,
     build_network, ROLE_LABELS,
 )
+from geo_networks import BUILDERS as GEO_BUILDERS
+from geo_map import build_map as build_geo_map
+from streamlit_folium import st_folium
 
 # ── Seitenconfig ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -50,6 +53,7 @@ for key, default in [
     ("result",       None),
     ("nodes_df",     None),
     ("edges_df",     None),
+    ("coords",       None),
     ("chat_history", []),
 ]:
     if key not in st.session_state:
@@ -190,19 +194,15 @@ with tab_netz:
 
         if st.button(f"📂 Beispielnetz laden ({domain})",
                      type="primary", use_container_width=True):
-            if domain == "Wasser":
-                net = build_water_example()
-            elif domain == "Gas":
-                net = build_gas_example(pressure_level_str)
-            elif domain == "Fernwärme":
-                net = build_heating_example()
-            elif domain == "Strom (AC)":
-                net = build_ac_example()
+            builder = GEO_BUILDERS[domain]
+            if domain in ("Gas", "Wasser"):
+                net, coords = builder(pressure_level_str)
             else:
-                net = build_dc_example()
+                net, coords = builder()
 
             st.session_state.network = net
             st.session_state.result  = None
+            st.session_state.coords  = coords
             st.session_state.nodes_df, st.session_state.edges_df = network_to_dfs(net)
             st.success(f"Geladen: {len(net._nodes)} Knoten, {len(net._edges)} Leitungen")
 
@@ -268,6 +268,7 @@ with tab_netz:
                             )
                             st.session_state.network = net
                             st.session_state.result  = None
+                            st.session_state.coords  = None
                             st.session_state.nodes_df, st.session_state.edges_df = \
                                 network_to_dfs(net)
                             st.success(
@@ -298,15 +299,23 @@ with tab_netz:
             st.dataframe(st.session_state.edges_df,
                          use_container_width=True, hide_index=True)
 
-            # Netz-Topologie visualisieren (ATN-Plotmodul)
+            # Netz-Topologie visualisieren
             st.subheader("Netz-Topologie")
-            try:
-                net = st.session_state.network
-                fig = plot_network(net, title=f"Topologie: {net.name}")
-                st.pyplot(fig)
-                plt.close(fig)
-            except Exception as e:
-                st.caption(f"Topologie-Plot nicht verfügbar: {e}")
+            net    = st.session_state.network
+            coords = st.session_state.coords
+            if coords:
+                # Geo-Karte mit OSM-Hintergrund
+                fmap = build_geo_map(net, coords, domain)
+                st_folium(fmap, use_container_width=True, height=480,
+                          returned_objects=[])
+            else:
+                # Fallback: schematischer Topologie-Plot (CSV-Import)
+                try:
+                    fig = plot_network(net, title=f"Topologie: {net.name}")
+                    st.pyplot(fig)
+                    plt.close(fig)
+                except Exception as e:
+                    st.caption(f"Topologie-Plot nicht verfügbar: {e}")
         else:
             st.info("Bitte zuerst ein Netz laden.")
 
@@ -414,6 +423,14 @@ with tab_results:
                 ])
                 st.dataframe(df, hide_index=True, use_container_width=True)
 
+            if st.session_state.coords:
+                st.markdown("**Karte — Versorgungsdruck**")
+                fmap = build_geo_map(st.session_state.network,
+                                     st.session_state.coords, domain,
+                                     result=st.session_state.result)
+                st_folium(fmap, use_container_width=True, height=420,
+                          returned_objects=[])
+
             st.markdown("**Druckprofil**")
             fig, ax = plt.subplots(figsize=(9, 3))
             ns = sorted(res.pressures)
@@ -463,6 +480,14 @@ with tab_results:
                 ])
                 st.dataframe(df, hide_index=True, use_container_width=True)
 
+            if st.session_state.coords:
+                st.markdown("**Karte — Versorgungsdruck**")
+                fmap = build_geo_map(st.session_state.network,
+                                     st.session_state.coords, domain,
+                                     result=st.session_state.result)
+                st_folium(fmap, use_container_width=True, height=420,
+                          returned_objects=[])
+
             st.markdown("**Druckprofil**")
             fig, ax = plt.subplots(figsize=(9, 3))
             ns = sorted(res.pressures_bar)
@@ -509,6 +534,14 @@ with tab_results:
                     for n, t in sorted(therm.temperatures.items())
                 ])
                 st.dataframe(df, hide_index=True, use_container_width=True)
+
+            if st.session_state.coords:
+                st.markdown("**Karte — Vorlauftemperaturen**")
+                fmap = build_geo_map(st.session_state.network,
+                                     st.session_state.coords, domain,
+                                     result=st.session_state.result)
+                st_folium(fmap, use_container_width=True, height=420,
+                          returned_objects=[])
 
             st.markdown("**Temperaturprofil**")
             try:
