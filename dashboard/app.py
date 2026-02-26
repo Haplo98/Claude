@@ -170,7 +170,7 @@ with st.sidebar:
         st.markdown(f"{icon} {label}")
 
     st.divider()
-    st.caption("THM Gießen\nProf. Dr.-Ing. O. Strelow\natn-framework v0.1.0")
+    st.caption("ATN-Theorie: Prof. Dr.-Ing. O. Strelow\nDashboard: Dipl.-Ing. (FH) Simon Konradi\natn-framework v0.1.0 · entwickelt mit Claude")
 
 # ── Kopfzeile ─────────────────────────────────────────────────────────────────
 icons = {"Wasser": "💧", "Gas": "⛽", "Fernwärme": "🔥", "Strom (DC)": "⚡", "Strom (AC)": "〜"}
