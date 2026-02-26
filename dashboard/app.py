@@ -51,6 +51,13 @@ st.set_page_config(
     menu_items={"About": "ATN Dashboard · THM Gießen · Prof. Dr.-Ing. O. Strelow"},
 )
 
+st.markdown("""<style>
+[data-testid="stMetricValue"] { font-size: 1.4rem; }
+[data-testid="stMetricLabel"] { font-size: 0.82rem; color: #555; }
+.stTabs [data-baseweb="tab-panel"] { padding-top: 0.5rem; }
+div[data-testid="stHorizontalBlock"] { align-items: flex-start; }
+</style>""", unsafe_allow_html=True)
+
 # ── Session State initialisieren ──────────────────────────────────────────────
 for key, default in [
     ("network",      None),
@@ -155,7 +162,7 @@ with st.sidebar:
 
     domain = st.selectbox(
         "Netzdomäne",
-        ["Wasser", "Gas", "Fernwärme", "Strom (DC)", "Strom (AC)"],
+        ["Wasser", "Gas", "Fernwärme", "Strom (AC)"],
         key="domain_select",
     )
 
@@ -167,7 +174,7 @@ with st.sidebar:
     st.markdown("**Modulstatus**")
     for label, done in [
         ("Fernwärme", True), ("Wasser", True), ("Gas ND/MD/HD", True),
-        ("Strom DC", True), ("Strom AC", True), ("Sektorenkopplung", True),
+        ("Strom AC", True), ("Sektorenkopplung", True),
         ("IO-Parser", False),
     ]:
         icon = "✅" if done else "🔧"
@@ -177,8 +184,18 @@ with st.sidebar:
     st.caption("ATN-Theorie: Prof. Dr.-Ing. O. Strelow\nDashboard: Dipl.-Ing. (FH) Simon Konradi\natn-framework v0.1.0 · entwickelt mit Claude")
 
 # ── Kopfzeile ─────────────────────────────────────────────────────────────────
-icons = {"Wasser": "💧", "Gas": "⛽", "Fernwärme": "🔥", "Strom (DC)": "⚡", "Strom (AC)": "〜"}
+icons = {"Wasser": "💧", "Gas": "⛽", "Fernwärme": "🔥", "Strom (AC)": "〜"}
 st.title(f"{icons.get(domain, '🔧')} ATN Dashboard — {domain}")
+
+
+def _tab_header(title: str, text: str, icon: str = "ℹ", color: str = "#2E86AB") -> None:
+    st.markdown(
+        f"""<div style="border-left:4px solid {color};padding:0.4rem 0.8rem;"""
+        f"""margin-bottom:0.8rem;background:rgba(46,134,171,0.05);border-radius:0 4px 4px 0">"""
+        f"""<span style="font-size:1.05rem;font-weight:600">{icon} {title}</span><br>"""
+        f"""<span style="font-size:0.88rem;color:#444">{text}</span></div>""",
+        unsafe_allow_html=True,
+    )
 
 tab_netz, tab_calc, tab_results, tab_coupling, tab_ki = st.tabs([
     "🔧  Netzmodell",
@@ -192,6 +209,14 @@ tab_netz, tab_calc, tab_results, tab_coupling, tab_ki = st.tabs([
 # TAB 1 — NETZMODELL
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_netz:
+    _tab_header(
+        "Netzmodell",
+        "Lädt und visualisiert technische Netze (Wasser, Gas, Fernwärme, Strom AC) "
+        "als geo-referenzierte OSM-Karte oder Schaltplan. Alternativ: CSV-Import eigener "
+        "Netzdaten mit automatischer Spaltenerkennung. Die Kopplungsmatrix K und GJ-Analyse "
+        "(Rang, Freiheitsgrad, Maschen) werden automatisch bestimmt.",
+        icon="🔧", color="#2E86AB",
+    )
     col_links, col_rechts = st.columns([1, 2])
 
     with col_links:
@@ -328,6 +353,14 @@ with tab_netz:
 # TAB 2 — BERECHNUNG
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_calc:
+    _tab_header(
+        "Berechnung",
+        "Löst das nichtlineare ATN-Gleichungssystem iterativ. "
+        "Wasser: Hazen-Williams (Newton-Raphson) | Gas: Darcy-Weisbach/Weymouth | "
+        "Fernwärme: 2-stufig hydraulisch + thermisch | Strom AC: komplexe Admittanzmatrix. "
+        "Konvergenz und Iterationsanzahl sind einstellbar.",
+        icon="▶", color="#27AE60",
+    )
     if st.session_state.network is None:
         st.warning("Bitte zuerst im Tab **Netzmodell** ein Netz laden.")
     else:
@@ -387,6 +420,14 @@ with tab_calc:
 # TAB 3 — ERGEBNISSE
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_results:
+    _tab_header(
+        "Ergebnisse",
+        "Zeigt Drücke, Flüsse, Temperaturen oder Spannungen tabellarisch und als "
+        "Balkendiagramm. Bei geo-referenzierten Netzen werden Ergebnisse farbkodiert "
+        "auf der Gießen-OSM-Karte dargestellt. DVGW-Normverstöße (W 303 / G 600) "
+        "werden farblich hervorgehoben.",
+        icon="📊", color="#8E44AD",
+    )
     if st.session_state.result is None:
         st.info("Bitte zuerst eine Berechnung durchführen.")
     else:
@@ -642,11 +683,14 @@ with tab_results:
 # TAB 4 — SEKTORENKOPPLUNG
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_coupling:
-    st.subheader("⚡ Sektorenkopplung — Kommunales Energiesystem")
-    st.caption(
-        "Modell nach Strelow (2024): BHKW + Wärmepumpe + Spitzenlastkessel + Stromnetz. "
-        "5 Variablen, 3 Bilanzgleichungen → **Freiheitsgrad d = 2** → "
-        "2D-Entscheidungsraum (das »Hexagon« aus dem Paper)."
+    _tab_header(
+        "Sektorenkopplung",
+        "Das Kopplungsmodell nach Strelow (2024) koppelt Strom-, Wärme- und Gasnetz "
+        "über gemeinsame Bilanzgleichungen. Die Gauß-Jordan-Zerlegung der Kopplungsmatrix K "
+        "identifiziert Entscheidungs- und Folgegrößen. Der 2D-Entscheidungsraum (Hexagon) "
+        "zeigt alle zulässigen Betriebspunkte – Lineare Programmierung (HiGHS-Solver) "
+        "findet den kostenoptimalen.",
+        icon="⚡", color="#E67E22",
     )
 
     col_cfg, col_res = st.columns([1, 2])
@@ -759,9 +803,13 @@ with tab_coupling:
 # TAB 5 — KI-ASSISTENT
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_ki:
-    st.subheader("🤖 KI-Assistent")
-    st.caption("Fragen zu Berechnungsergebnissen, DVGW-Normen und ATN-Methodik. "
-               "Claude API-Anbindung folgt im nächsten Schritt.")
+    _tab_header(
+        "KI-Assistent",
+        "Beantwortet Fragen zu Berechnungsergebnissen, DVGW-Normen und ATN-Methodik. "
+        "Stichworte: 'Verletzung', 'Weymouth', 'Hazen', 'DVGW', 'ATN'. "
+        "Vollständige Claude-API-Anbindung (Anthropic) ist der nächste Entwicklungsschritt.",
+        icon="🤖", color="#2C3E50",
+    )
 
     # Demo-Antworten für häufige Fragen
     DEMO = {
@@ -824,7 +872,7 @@ with tab_ki:
                     f"- Konvergenz nach {res.iterations} Iterationen: "
                     f"{'✓ ja' if res.converged else '✗ nein'}\n"
                     f"- DVGW W 303: {'✅ Alle Knoten OK' if ok else f'⚠ {len(res.pressure_violations)} Verletzung(en)'}\n"
-                    f"- Minimaler Versorgungsdruck: {min(res.pressures.values())/1e5:.3f} bar\n\n"
+                    f"- Minimaler Versorgungsdruck: {min(res.pressures.values()):.3f} bar\n\n"
                     f"{'Alle Drücke liegen im Bereich 2–8 bar.' if ok else 'Empfehlung: Druckverletzungen in Tab **Ergebnisse** prüfen.'}"
                 )
             elif kind == "gas":
