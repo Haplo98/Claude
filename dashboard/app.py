@@ -37,6 +37,10 @@ from csv_import import (
 from geo_networks import BUILDERS as GEO_BUILDERS
 from geo_map import build_map as build_geo_map
 from streamlit_folium import st_folium
+from sector_coupling import (
+    build_model as build_coupling_model,
+    plot_decision_space, plot_solution_bars, plot_coupling_matrix_heatmap,
+)
 
 # ── Seitenconfig ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -176,10 +180,11 @@ with st.sidebar:
 icons = {"Wasser": "💧", "Gas": "⛽", "Fernwärme": "🔥", "Strom (DC)": "⚡", "Strom (AC)": "〜"}
 st.title(f"{icons.get(domain, '🔧')} ATN Dashboard — {domain}")
 
-tab_netz, tab_calc, tab_results, tab_ki = st.tabs([
+tab_netz, tab_calc, tab_results, tab_coupling, tab_ki = st.tabs([
     "🔧  Netzmodell",
     "▶  Berechnung",
     "📊  Ergebnisse",
+    "⚡  Sektorenkopplung",
     "🤖  KI-Assistent",
 ])
 
@@ -633,7 +638,125 @@ with tab_results:
             plt.tight_layout(); st.pyplot(fig); plt.close(fig)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — KI-ASSISTENT
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — SEKTORENKOPPLUNG
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_coupling:
+    st.subheader("⚡ Sektorenkopplung — Kommunales Energiesystem")
+    st.caption(
+        "Modell nach Strelow (2024): BHKW + Wärmepumpe + Spitzenlastkessel + Stromnetz. "
+        "5 Variablen, 3 Bilanzgleichungen → **Freiheitsgrad d = 2** → "
+        "2D-Entscheidungsraum (das »Hexagon« aus dem Paper)."
+    )
+
+    col_cfg, col_res = st.columns([1, 2])
+
+    # ── Linke Spalte: Konfiguration ───────────────────────────────────────────
+    with col_cfg:
+        with st.expander("📋 Energiebedarfe", expanded=True):
+            P_el = st.slider("Strombedarf P_el [kW]",   50,  500, 150, 10)
+            Q_hz = st.slider("Wärmebedarf Q_hz [kW]",  100, 1000, 350, 10)
+
+        with st.expander("🔧 BHKW", expanded=True):
+            eta_el      = st.slider("η_el (elektr. WG)", 0.30, 0.45, 0.38, 0.01,
+                                    format="%.2f")
+            eta_hz      = st.slider("η_hz (therm. WG)",  0.40, 0.60, 0.50, 0.01,
+                                    format="%.2f")
+            P_bhkw_max  = st.slider("P_max [kW]",  50, 500, 300, 10)
+
+        with st.expander("💧 Wärmepumpe"):
+            COP        = st.slider("COP",         2.0, 5.5, 3.5, 0.1, format="%.1f")
+            P_wp_max   = st.slider("P_max [kW]",  0,   300, 150, 10)
+
+        with st.expander("🔥 Spitzenlastkessel"):
+            eta_kessel = st.slider("η_Kessel",    0.85, 0.98, 0.92, 0.01,
+                                   format="%.2f")
+            Q_k_max    = st.slider("Q_max [kW]",  0,    600,  400, 10)
+
+        with st.expander("💶 Energiepreise"):
+            c_strom = st.slider("Strompreis [EUR/kWh]", 0.05, 0.45, 0.25, 0.01,
+                                format="%.2f")
+            c_gas   = st.slider("Gaspreis   [EUR/kWh]", 0.02, 0.15, 0.05, 0.005,
+                                format="%.3f")
+
+        run_btn = st.button("▶ Analysieren & Optimieren",
+                            type="primary", use_container_width=True)
+
+    # ── Rechte Spalte: Ergebnisse ─────────────────────────────────────────────
+    with col_res:
+        # Modell immer aktuell aufbauen (Parameter aus Slidern)
+        model = build_coupling_model(
+            P_el_bedarf=P_el, Q_hz_bedarf=Q_hz,
+            eta_el=eta_el,    eta_hz=eta_hz,     P_bhkw_max=P_bhkw_max,
+            COP=COP,          P_wp_max=P_wp_max,
+            eta_kessel=eta_kessel, Q_k_max=Q_k_max,
+            P_netz_max=200,
+        )
+        analysis = model.analyze()
+
+        # ── Systemübersicht ───────────────────────────────────────────────────
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Variablen",       len(model._variables))
+        c2.metric("Bilanzen",        len(model._balances))
+        c3.metric("Rang",            analysis.rank)
+        c4.metric("Freiheitsgrad d", analysis.dof,
+                  delta="→ 2D-Entscheidungsraum" if analysis.dof == 2 else None)
+
+        col_e, col_f = st.columns(2)
+        col_e.markdown("**Entscheidungsgrößen** *(frei wählbar)*")
+        for v in analysis.decision_variables:
+            col_e.markdown(f"- `{v}`")
+        col_f.markdown("**Folgegrößen** *(kausal abhängig)*")
+        for v in analysis.dependent_variables:
+            col_f.markdown(f"- `{v}`")
+
+        st.divider()
+
+        # ── Kopplungsmatrix ───────────────────────────────────────────────────
+        with st.expander("📐 Kopplungsmatrix K & GJ-Zeilenstufenform"):
+            fig_k = plot_coupling_matrix_heatmap(model)
+            st.pyplot(fig_k); plt.close(fig_k)
+
+        # ── Optimierung + Entscheidungsraum ───────────────────────────────────
+        if run_btn or "coupling_opt" in st.session_state:
+            if run_btn:
+                with st.spinner("Optimierung läuft …"):
+                    costs = {"P_Netz": c_strom, "V_Gas": c_gas,
+                             "P_BHKW": 0, "P_WP": 0, "Q_Kessel": 0}
+                    opt = model.optimize(costs, minimize_obj=True)
+                st.session_state["coupling_opt"] = opt
+                st.session_state["coupling_costs"] = (c_strom, c_gas)
+            else:
+                opt = st.session_state["coupling_opt"]
+
+            st.markdown("#### Optimaler Betriebspunkt")
+            if opt.status == "optimal":
+                oc1, oc2, oc3 = st.columns(3)
+                oc1.metric("Betriebskosten",  f"{opt.objective_value:.2f} EUR/h")
+                oc2.metric("Gasleistung",
+                           f"{opt.solution.get('V_Gas', 0):.1f} kW")
+                oc3.metric("Netzbezug/Einspeisug",
+                           f"{opt.solution.get('P_Netz', 0):+.1f} kW")
+
+                fig_sol = plot_solution_bars(model, opt)
+                st.pyplot(fig_sol); plt.close(fig_sol)
+            else:
+                st.error("Kein zulässiger Betriebspunkt gefunden — "
+                         "Parameter anpassen.")
+
+            st.markdown("#### Entscheidungsraum")
+            st.caption(
+                "Blau = zulässige Betriebspunkte (alle Bilanzen & Grenzen erfüllt). "
+                "★ = kostenoptimaler Betriebspunkt."
+            )
+            opt_for_plot = st.session_state.get("coupling_opt")
+            fig_ds = plot_decision_space(model, opt_result=opt_for_plot)
+            st.pyplot(fig_ds); plt.close(fig_ds)
+
+        else:
+            st.info("Parameter einstellen und **▶ Analysieren & Optimieren** klicken.")
+
+# TAB 5 — KI-ASSISTENT
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_ki:
     st.subheader("🤖 KI-Assistent")
